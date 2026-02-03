@@ -5,16 +5,15 @@ import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 
 const registerUser = asyncHandler(async (req, res) => {
-  const { username, email, password, fullname } = req.body;
-  console.log("email :", email);
+  const { username, email, password, fullName } = req.body;
 
   if (
-    [fullname, username, email, password].some((feild) => feild?.trim() === "")
+    [fullName, username, email, password].some((feild) => feild?.trim() === "")
   ) {
     throw new ApiError(400, "all feilds are required");
   }
 
-  const existedUser = User.findOne({
+  const existedUser = await User.findOne({
     $or: [{ username }, { email }],
   });
 
@@ -36,13 +35,13 @@ const registerUser = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Avatar file is required");
   }
 
-  const user = User.create({
-    fullname,
+  const user = await User.create({
+    fullName,
     avatar: avatar.url,
     coverImage: coverImage?.url || "",
     email,
     password,
-    username: username.toLowercase(),
+    username: username.toLowerCase(),
   });
 
   const createdUser = await User.findById(user._id).select(
