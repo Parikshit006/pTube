@@ -68,7 +68,10 @@ const registerUser = asyncHandler( async (req, res) => {
     }
 
     const avatar = await uploadOnCloudinary(avatarLocalPath)
-    const coverImage = await uploadOnCloudinary(coverImageLocalPath)
+    let coverImage = null;
+    if (coverImageLocalPath) {
+        coverImage = await uploadOnCloudinary(coverImageLocalPath)
+    }
 
     if (!avatar) {
         throw new ApiError(400, "Avatar file is required")
@@ -137,15 +140,17 @@ const loginUser = asyncHandler(async (req, res) =>{
 
     const loggedInUser = await User.findById(user._id).select("-password -refreshToken")
 
-    const options = {
-        httpOnly: true,
-        secure: true
-    }
+    const cookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 2 * 24 * 60 * 60 * 1000, // 2 days in ms
+    };
 
     return res
     .status(200)
-    .cookie("accessToken", accessToken, options)
-    .cookie("refreshToken", refreshToken, options)
+    .cookie("accessToken", accessToken, cookieOptions)
+    .cookie("refreshToken", refreshToken, cookieOptions)
     .json(
         new ApiResponse(
             200, 
@@ -173,7 +178,9 @@ const logoutUser = asyncHandler(async(req, res) => {
 
     const options = {
         httpOnly: true,
-        secure: true
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 2 * 24 * 60 * 60 * 1000
     }
 
     return res
@@ -184,52 +191,47 @@ const logoutUser = asyncHandler(async(req, res) => {
 })
 
 const refreshAccessToken = asyncHandler(async (req, res) => {
-    const incomingRefreshToken = req.cookies.refreshToken || req.body.refreshToken
+  const incomingRefreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
 
-    if (!incomingRefreshToken) {
-        throw new ApiError(401, "unauthorized request")
-    }
+  if (!incomingRefreshToken || typeof incomingRefreshToken !== 'string' || incomingRefreshToken.trim() === '') {
+    throw new ApiError(401, 'Unauthorized — no refresh token');
+  }
 
-    try {
-        const decodedToken = jwt.verify(
-            incomingRefreshToken,
-            process.env.REFRESH_TOKEN_SECRET
-        )
-    
-        const user = await User.findById(decodedToken?._id)
-    
-        if (!user) {
-            throw new ApiError(401, "Invalid refresh token")
-        }
-    
-        if (incomingRefreshToken !== user?.refreshToken) {
-            throw new ApiError(401, "Refresh token is expired or used")
-            
-        }
-    
-        const options = {
-            httpOnly: true,
-            secure: true
-        }
-    
-        const {accessToken, newRefreshToken} = await generateAccessAndRefereshTokens(user._id)
-    
-        return res
-        .status(200)
-        .cookie("accessToken", accessToken, options)
-        .cookie("refreshToken", newRefreshToken, options)
-        .json(
-            new ApiResponse(
-                200, 
-                {accessToken, refreshToken: newRefreshToken},
-                "Access token refreshed"
-            )
-        )
-    } catch (error) {
-        throw new ApiError(401, error?.message || "Invalid refresh token")
-    }
+  let decoded;
+  try {
+    decoded = jwt.verify(incomingRefreshToken, process.env.REFRESH_TOKEN_SECRET);
+  } catch (err) {
+    throw new ApiError(401, 'Refresh token is invalid or expired');
+  }
 
-})
+  const user = await User.findById(decoded?._id);
+
+  if (!user) {
+    throw new ApiError(401, 'User not found');
+  }
+
+  if (incomingRefreshToken !== user.refreshToken) {
+    throw new ApiError(401, 'Refresh token is expired or already used');
+  }
+
+  const accessToken = user.generateAccessToken();
+  const newRefreshToken = user.generateRefreshToken(); // ← generate fresh one
+
+  user.refreshToken = newRefreshToken;
+  await user.save({ validateBeforeSave: false });
+
+  const cookieOptions = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 2 * 24 * 60 * 60 * 1000,
+  };
+
+  return res
+    .status(200)
+    .cookie('refreshToken', newRefreshToken, cookieOptions)
+    .json(new ApiResponse(200, { accessToken }, 'Access token refreshed'));
+});
 
 const changeCurrentPassword = asyncHandler(async(req, res) => {
     const {oldPassword, newPassword} = req.body
@@ -263,10 +265,10 @@ const getCurrentUser = asyncHandler(async(req, res) => {
 })
 
 const updateAccountDetails = asyncHandler(async(req, res) => {
-    const {fullName, email} = req.body
+    const {fullName, email, description, username} = req.body
 
     if (!fullName || !email) {
-        throw new ApiError(400, "All fields are required")
+        throw new ApiError(400, "Full name and email are required")
     }
 
     const user = await User.findByIdAndUpdate(
@@ -274,11 +276,12 @@ const updateAccountDetails = asyncHandler(async(req, res) => {
         {
             $set: {
                 fullName,
-                email: email
+                email,
+                description: description || "",
+                username: username?.toLowerCase() || req.user.username
             }
         },
         {new: true}
-        
     ).select("-password")
 
     return res
@@ -354,19 +357,29 @@ const updateUserCoverImage = asyncHandler(async(req, res) => {
 })
 
 
-const getUserChannelProfile = asyncHandler(async(req, res) => {
-    const {username} = req.params
+const getUserChannelProfile = asyncHandler(async (req, res) => {
+  const { username } = req.params;
 
-    if (!username?.trim()) {
-        throw new ApiError(400, "username is missing")
-    }
+  if (!username?.trim()) {
+    throw new ApiError(400, "username is missing")
+  }
 
-    const channel = await User.aggregate([
-        {
-            $match: {
-                username: username?.toLowerCase()
-            }
-        },
+  // Optional user ID for isSubscribed
+  let userId = null;
+  const token = req.cookies?.accessToken || req.header("Authorization")?.replace("Bearer ", "");
+  if (token) {
+      try {
+          const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+          userId = decoded._id;
+      } catch(err) {}
+  }
+
+  const channel = await User.aggregate([
+    {
+      $match: {
+        username: username.toLowerCase()
+      },
+    },
         {
             $lookup: {
                 from: "subscriptions",
@@ -393,7 +406,7 @@ const getUserChannelProfile = asyncHandler(async(req, res) => {
                 },
                 isSubscribed: {
                     $cond: {
-                        if: {$in: [req.user?._id, "$subscribers.subscriber"]},
+                        if: { $in: [userId ? new mongoose.Types.ObjectId(userId) : null, "$subscribers.subscriber"] },
                         then: true,
                         else: false
                     }
@@ -409,22 +422,21 @@ const getUserChannelProfile = asyncHandler(async(req, res) => {
                 isSubscribed: 1,
                 avatar: 1,
                 coverImage: 1,
-                email: 1
+                email: 1,
+                description: 1
 
             }
         }
     ])
 
-    if (!channel?.length) {
-        throw new ApiError(404, "channel does not exists")
-    }
+  if (!channel || channel.length === 0) {
+    throw new ApiError(404, 'Channel does not exist');
+  }
 
-    return res
+  return res
     .status(200)
-    .json(
-        new ApiResponse(200, channel[0], "User channel fetched successfully")
-    )
-})
+    .json(new ApiResponse(200, channel[0], 'Channel fetched successfully'));
+});
 
 const getWatchHistory = asyncHandler(async(req, res) => {
     const user = await User.aggregate([

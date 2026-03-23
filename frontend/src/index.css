@@ -1,0 +1,89 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Outfit:wght@300;400;500&family=Syne:wght@600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f5f5f7;
+    --bg-tertiary: #ebebef;
+    --bg-elevated: #ffffff;
+    --bg-overlay: #f0f0f4;
+    --border-subtle: #e8e8f0;
+    --border-default: #e0e0e8;
+    --border-strong: #c8c8d8;
+    --text-primary: #0a0a0f;
+    --text-secondary: #52525f;
+    --text-muted: #9090a0;
+    --text-disabled: #c0c0cc;
+
+    --red: #ff3b3b;
+    --red-dim: rgba(255, 59, 59, 0.10);
+    --blue: #3b82f6;
+    --blue-dim: rgba(59, 130, 246, 0.10);
+    --green: #22c55e;
+    --gold: #f5a623;
+    --purple: #a855f7;
+    --info: #38bdf8;
+  }
+
+  .dark {
+    --bg-primary: #070709;
+    --bg-secondary: #0f0f12;
+    --bg-tertiary: #161619;
+    --bg-elevated: #1e1e22;
+    --bg-overlay: #28282e;
+    --border-subtle: #1e1e22;
+    --border-default: #2a2a32;
+    --border-strong: #3a3a44;
+    --text-primary: #f0f0f2;
+    --text-secondary: #a0a0b0;
+    --text-muted: #606070;
+    --text-disabled: #404050;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-bg-primary text-text-primary font-body;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Custom Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border-default);
+    border-radius: 100px;
+  }
+
+  /* Selection */
+  ::selection {
+    background: rgba(255, 59, 59, 0.20);
+  }
+
+  /* Global Inputs Focus Ring */
+  input, textarea, select {
+    @apply transition-all duration-200 outline-none;
+  }
+  input:focus, textarea:focus, select:focus {
+    outline: none;
+    border-color: var(--red) !important;
+    box-shadow: 0 0 0 3px rgba(255, 59, 59, 0.12) !important;
+  }
+}
+
+@layer components {
+  .btn-icon {
+    @apply flex items-center justify-center rounded-full transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-red focus-visible:ring-offset-2;
+  }
+}

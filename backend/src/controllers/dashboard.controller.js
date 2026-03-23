@@ -7,7 +7,6 @@ import {ApiResponse} from "../utils/ApiResponse.js"
 import {asyncHandler} from "../utils/asyncHandler.js"
 
 const getChannelStats = asyncHandler(async (req, res) => {
-    // TODO: Get the channel stats like total video views, total subscribers, total videos, total likes etc.
       const channelId = req.user._id;
 
       const totalVideos = await Video.countDocuments({
@@ -16,7 +15,7 @@ const getChannelStats = asyncHandler(async (req, res) => {
 
       const totalViews = await Video.aggregate([
         {
-          $match: { owner: channelId },
+          $match: { owner: new mongoose.Types.ObjectId(channelId) },
         },
         {
           $group: {
@@ -67,12 +66,36 @@ const getChannelStats = asyncHandler(async (req, res) => {
 })
 
 const getChannelVideos = asyncHandler(async (req, res) => {
-    // TODO: Get all the videos uploaded by the channel
       const channelId = req.user._id;
 
-      const videos = await Video.find({
-        owner: channelId,
-      }).sort({ createdAt: -1 });
+      const videos = await Video.aggregate([
+        {
+          $match: {
+            owner: new mongoose.Types.ObjectId(channelId)
+          }
+        },
+        {
+          $lookup: {
+            from: "likes",
+            localField: "_id",
+            foreignField: "video",
+            as: "likes"
+          }
+        },
+        {
+          $addFields: {
+            likesCount: { $size: "$likes" }
+          }
+        },
+        {
+          $project: {
+            likes: 0
+          }
+        },
+        {
+          $sort: { createdAt: -1 }
+        }
+      ]);
 
       return res
         .status(200)
@@ -84,4 +107,4 @@ const getChannelVideos = asyncHandler(async (req, res) => {
 export {
     getChannelStats, 
     getChannelVideos
-    }
+}

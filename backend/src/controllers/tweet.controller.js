@@ -1,13 +1,11 @@
 import mongoose, { isValidObjectId } from "mongoose"
 import {Tweet} from "../models/tweet.model.js"
-import {User} from "../models/user.model.js"
+import {Like} from "../models/like.model.js"
 import {ApiError} from "../utils/ApiError.js"
 import {ApiResponse} from "../utils/ApiResponse.js"
 import {asyncHandler} from "../utils/asyncHandler.js"
 
 const createTweet = asyncHandler(async (req, res) => {
-    //TODO: create tweet
-    
     const { content } = req.body;
 
     if (!content || content.trim() === "") {
@@ -25,17 +23,75 @@ const createTweet = asyncHandler(async (req, res) => {
 })
 
 const getUserTweets = asyncHandler(async (req, res) => {
-    // TODO: get user tweets
-
     const { userId } = req.params;
 
     if (!isValidObjectId(userId)) {
       throw new ApiError(400, "Invalid user ID");
     }
 
-    const tweets = await Tweet.find({ owner: userId })
-      .sort({ createdAt: -1 })
-      .populate("owner", "fullName username avatar");
+    // Optional user ID for isLikedByUser
+    let authUserId = null;
+    const token = req.cookies?.accessToken || req.header("Authorization")?.replace("Bearer ", "");
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+        authUserId = decoded._id;
+      } catch(err) {}
+    }
+
+    const tweets = await Tweet.aggregate([
+      {
+        $match: {
+          owner: new mongoose.Types.ObjectId(userId)
+        }
+      },
+      {
+        $lookup: {
+          from: "users",
+          localField: "owner",
+          foreignField: "_id",
+          as: "owner",
+          pipeline: [
+            {
+              $project: {
+                fullName: 1,
+                username: 1,
+                avatar: 1
+              }
+            }
+          ]
+        }
+      },
+      {
+        $lookup: {
+          from: "likes",
+          localField: "_id",
+          foreignField: "tweet",
+          as: "likes"
+        }
+      },
+      {
+        $addFields: {
+          owner: { $first: "$owner" },
+          likesCount: { $size: "$likes" },
+          isLikedByUser: {
+            $cond: {
+              if: { $in: [authUserId ? new mongoose.Types.ObjectId(authUserId) : null, "$likes.likedBy"] },
+              then: true,
+              else: false
+            }
+          }
+        }
+      },
+      {
+        $project: {
+          likes: 0
+        }
+      },
+      {
+        $sort: { createdAt: -1 }
+      }
+    ]);
 
     return res
       .status(200)
@@ -44,7 +100,6 @@ const getUserTweets = asyncHandler(async (req, res) => {
 })
 
 const updateTweet = asyncHandler(async (req, res) => {
-    //TODO: update tweet
      const { tweetId } = req.params;
      const { content } = req.body;
 
@@ -75,7 +130,6 @@ const updateTweet = asyncHandler(async (req, res) => {
 })
 
 const deleteTweet = asyncHandler(async (req, res) => {
-    //TODO: delete tweet
       const { tweetId } = req.params;
 
       if (!isValidObjectId(tweetId)) {
@@ -92,6 +146,7 @@ const deleteTweet = asyncHandler(async (req, res) => {
         throw new ApiError(403, "You are not authorized to delete this tweet");
       }
 
+      await Like.deleteMany({ tweet: tweetId });
       await tweet.deleteOne();
 
       return res

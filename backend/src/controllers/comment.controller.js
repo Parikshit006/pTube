@@ -1,67 +1,96 @@
 import mongoose from "mongoose"
 import {Comment} from "../models/comment.model.js"
+import {Like} from "../models/like.model.js"
 import {ApiError} from "../utils/ApiError.js"
 import {ApiResponse} from "../utils/ApiResponse.js"
 import {asyncHandler} from "../utils/asyncHandler.js"
 
 const getVideoComments = asyncHandler(async (req, res) => {
-    //TODO: get all comments for a video
     const {videoId} = req.params
     const {page = 1, limit = 10} = req.query
-     if (!mongoose.isValidObjectId(videoId)) {
-       throw new ApiError(400, "Invalid video ID");
-     }
+    if (!mongoose.isValidObjectId(videoId)) {
+      throw new ApiError(400, "Invalid video ID");
+    }
 
-     const aggregate = Comment.aggregate([
-       {
-         $match: {
-           video: new mongoose.Types.ObjectId(videoId),
-         },
-       },
-       {
-         $lookup: {
-           from: "users",
-           localField: "owner",
-           foreignField: "_id",
-           as: "owner",
-           pipeline: [
-             {
-               $project: {
-                 fullName: 1,
-                 username: 1,
-                 avatar: 1,
-               },
-             },
-           ],
-         },
-       },
-       {
-         $addFields: {
-           owner: { $first: "$owner" },
-         },
-       },
-       {
-         $sort: { createdAt: -1 },
-       },
-     ]);
+    // Optional user ID for isLikedByUser
+    let userId = null;
+    const token = req.cookies?.accessToken || req.header("Authorization")?.replace("Bearer ", "");
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
+        userId = decoded._id;
+      } catch(err) {}
+    }
 
-     const options = {
-       page: parseInt(page),
-       limit: parseInt(limit),
-     };
+    const aggregate = Comment.aggregate([
+      {
+        $match: {
+          video: new mongoose.Types.ObjectId(videoId),
+        },
+      },
+      {
+        $lookup: {
+          from: "users",
+          localField: "owner",
+          foreignField: "_id",
+          as: "owner",
+          pipeline: [
+            {
+              $project: {
+                fullName: 1,
+                username: 1,
+                avatar: 1,
+              },
+            },
+          ],
+        },
+      },
+      {
+        $lookup: {
+          from: "likes",
+          localField: "_id",
+          foreignField: "comment",
+          as: "likes"
+        }
+      },
+      {
+        $addFields: {
+          owner: { $first: "$owner" },
+          likesCount: { $size: "$likes" },
+          isLikedByUser: {
+            $cond: {
+              if: { $in: [userId ? new mongoose.Types.ObjectId(userId) : null, "$likes.likedBy"] },
+              then: true,
+              else: false
+            }
+          }
+        },
+      },
+      {
+        $project: {
+          likes: 0
+        }
+      },
+      {
+        $sort: { createdAt: -1 },
+      },
+    ]);
 
-     const comments = await Comment.aggregatePaginate(aggregate, options);
+    const options = {
+      page: parseInt(page),
+      limit: parseInt(limit),
+    };
 
-     return res
-       .status(200)
-       .json(
-         new ApiResponse(200, comments, "Video comments fetched successfully")
-       );
+    const comments = await Comment.aggregatePaginate(aggregate, options);
 
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(200, comments, "Video comments fetched successfully")
+      );
 })
 
 const addComment = asyncHandler(async (req, res) => {
-    // TODO: add a comment to a video
      const { videoId } = req.params;
      const { content } = req.body;
 
@@ -85,7 +114,6 @@ const addComment = asyncHandler(async (req, res) => {
 })
 
 const updateComment = asyncHandler(async (req, res) => {
-    // TODO: update a comment
       const { commentId } = req.params;
       const { content } = req.body;
 
@@ -119,7 +147,6 @@ const updateComment = asyncHandler(async (req, res) => {
 })
 
 const deleteComment = asyncHandler(async (req, res) => {
-    // TODO: delete a comment
      const { commentId } = req.params;
 
      if (!mongoose.isValidObjectId(commentId)) {
@@ -136,6 +163,7 @@ const deleteComment = asyncHandler(async (req, res) => {
        throw new ApiError(403, "You are not authorized to delete this comment");
      }
 
+     await Like.deleteMany({ comment: commentId });
      await comment.deleteOne();
 
      return res
@@ -147,5 +175,5 @@ export {
     getVideoComments, 
     addComment, 
     updateComment,
-     deleteComment
-    }
+    deleteComment
+}
