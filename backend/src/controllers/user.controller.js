@@ -143,7 +143,7 @@ const loginUser = asyncHandler(async (req, res) =>{
     const cookieOptions = {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
       maxAge: 2 * 24 * 60 * 60 * 1000, // 2 days in ms
     };
 
@@ -179,7 +179,7 @@ const logoutUser = asyncHandler(async(req, res) => {
     const options = {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
         maxAge: 2 * 24 * 60 * 60 * 1000
     }
 
@@ -223,7 +223,7 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
   const cookieOptions = {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     maxAge: 2 * 24 * 60 * 60 * 1000,
   };
 
