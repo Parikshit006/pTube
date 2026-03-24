@@ -31,6 +31,10 @@ axiosInstance.interceptors.response.use(
   (res) => res,
   async (error) => {
     const original = error.config
+    if (original.url.includes('/users/refresh-token')) {
+      return Promise.reject(error)
+    }
+    
     if (error.response?.status === 401 && !original._retry) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {

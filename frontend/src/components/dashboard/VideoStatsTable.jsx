@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import Switch from '../ui/Switch';
 import { Edit, Trash2 } from 'lucide-react';
 import { formatViews } from '../../utils/formatters';
