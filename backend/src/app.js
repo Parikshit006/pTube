@@ -38,6 +38,9 @@ app.use("/api/v1/likes", likeRouter);
 app.use("/api/v1/playlists", playlistRouter);
 app.use("/api/v1/dashboard", dashboardRouter);
 
+app.get('/api/health',(req,res)=>{
+  res.json({status:'online',providor:'groq',models:GROQ_MODELS});
+})
 // http://localhost:8000/api/v1/users/register
 
 export { app };
